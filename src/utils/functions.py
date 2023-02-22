@@ -1,7 +1,8 @@
 import pathlib
 from itertools import combinations_with_replacement
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Tuple
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -36,7 +37,8 @@ def download_tickers_data(tickers: str,
             data=yf.download(tickers=tickers,
                              start=start,
                              end=end,
-                             threads=threads))
+                             threads=threads,
+                             progress=False))
         df_download = df_download.convert_dtypes(dtype_dict)
     except Exception:
         print("Region is invalid")
@@ -59,9 +61,10 @@ def evaluate_performance(tickers: str,
     """
     df_performance: pd.DataFrame = pd.DataFrame()
     for ticker in tickers.split(" "):
-        df_performance[f"Performance {ticker}"] = (
-            df["Close"][ticker] > df["Open"][ticker])
-    return df_performance.convert_dtypes(pd.BooleanDtype)
+        up_trend = df["Close"][ticker] > df["Open"][ticker]
+        down_trend = (df["Close"][ticker] < df["Open"][ticker]) * (-1)
+        df_performance[ticker] = up_trend + down_trend
+    return df_performance.convert_dtypes(pd.Int8Dtype)
 
 
 def read_tickers(file_path: str = "tickers.txt") -> str:
@@ -102,10 +105,65 @@ def tickers_combinations(tickers: str) -> Iterable:
     return combs
 
 
+def gen_tickeridx_ticks(tickers: str) -> Tuple[Dict]:
+    """Generate dictionary with index of ticker and 
+    ticker string itself. Additionally also the inverse.
+
+    Args:
+        tickers (str): Tickers of the stocks.
+
+    Returns:
+        Tuple[Dict]: Dictionaries and inverse.
+    """
+    ticker_idx: Dict = {}
+    idx_ticker: Dict = {}
+    for idx, ticker in enumerate(tickers.split(" ")):
+        ticker_idx[ticker] = idx
+        idx_ticker[idx] = ticker
+    return ticker_idx, idx_ticker
+
+
 def compare_combinations(combinations: Iterable,
-                         df: pd.DataFrame):
-    # comparison_matrix =
-    # TODO: Convert dtypes for addition and multiplication
+                         df: pd.DataFrame,
+                         ticker_dict: Dict,
+                         length: int) -> np.array:
+    """Compare stock performances and generate
+    combined matrix
+
+    Args:
+        combinations (Iterable): Combinations of stocks. 
+        (Always pair of two.)
+        df (pd.DataFrame): Dataframe with the performance
+        of the stocks.
+        ticker_dict (Dict): Dictionary to get indices.
+        length (int): For generating correct shape.
+
+    Returns:
+        np.array: _description_
+    """
+    combined_matrix: np.array = np.zeros(
+        shape=(length, length), dtype=np.int64)
     for comb in combinations:
-        res = df[comb[0]] * df[comb[1]] * (df[comb[0]] + df[comb[1]])
-    pass
+        i, j = ticker_dict[comb[0]], ticker_dict[comb[1]]
+        comb_0: np.array = np.array(df[comb[0]], dtype=np.int8)
+        comb_1: np.array = np.array(df[comb[1]], dtype=np.int8)
+        combined = (comb_0 == comb_1)
+        res = np.sum(combined)
+        combined_matrix[i, j] = res
+        if i != j:
+            combined_matrix[j, i] = res
+    return combined_matrix
+
+
+def calc_corr_matrix(combined_matrix: np.array) -> np.array:
+    """Calulated Pearson correlation matrix.
+
+    Args:
+        combined_matrix (np.array): Combined matrix of integers
+        of stock performance in comparison with each other.
+
+    Returns:
+        np.array: Correlation matrix.
+    """
+    return np.corrcoef(combined_matrix,
+                       dtype=np.float64)
