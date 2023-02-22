@@ -8,6 +8,8 @@ from utils.functions import (calc_corr_matrix, compare_combinations,
                              download_tickers_data, evaluate_performance,
                              gen_tickeridx_ticks, read_tickers,
                              tickers_combinations)
+from utils.graph import Graph
+from utils.path_finder import PathFinder
 from utils.plotting import corr_matrix_plotting
 
 
@@ -38,16 +40,22 @@ def main() -> int:
         df=df_performance,
         ticker_dict=ticker_dict,
         length=num_tickers)
-    corr_matrix: np.array = calc_corr_matrix(combined_matrix=combined_matrix)
-    corr_matrix_plotting(correlation_matrix=corr_matrix,
+    pearson_coef: np.array = calc_corr_matrix(combined_matrix=combined_matrix)
+    corr_matrix_plotting(correlation_matrix=pearson_coef,
                          column_names=ticks.split(" "),
                          cut=False)
     # define cut
     cut_variable: float = 0.4
-    corr_matrix = corr_matrix < cut_variable
+    corr_matrix = pearson_coef > cut_variable
     corr_matrix_plotting(correlation_matrix=corr_matrix,
                          column_names=ticks.split(" "),
                          cut=True)
+    # 7) ALGORTIHM FOR UNCORR STOCKS
+    path_finder: PathFinder = PathFinder(corelations=pearson_coef,
+                                         threshold=cut_variable)
+    proposed_paths: Dict = path_finder.find_path(top=3)
+    print(proposed_paths)
+
     return 0
 
 
